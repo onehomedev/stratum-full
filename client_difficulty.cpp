@@ -3,12 +3,10 @@
 
 double client_normalize_difficulty(double difficulty)
 {
-	double min_stratum_diff = g_stratum_difficulty * 0.5;
-	if(difficulty < min_stratum_diff)
-		difficulty = min_stratum_diff;
+	if(difficulty < g_stratum_min_diff) difficulty = g_stratum_min_diff;
 	else if(difficulty < 1) difficulty = floor(difficulty*1000/2)/1000*2;
 	else if(difficulty > 1) difficulty = floor(difficulty/2)*2;
-
+	if(difficulty > g_stratum_max_diff) difficulty = g_stratum_max_diff;
 	return difficulty;
 }
 
@@ -40,12 +38,8 @@ void client_change_difficulty(YAAMP_CLIENT *client, double difficulty)
 //	debuglog("change diff to %f %f\n", difficulty, client->difficulty_actual);
 	if(difficulty == client->difficulty_actual) return;
 
-	uint64_t user_target = diff_to_target(difficulty);
-	if(user_target >= YAAMP_MINDIFF && user_target <= YAAMP_MAXDIFF)
-	{
-		client->difficulty_actual = difficulty;
-		client_send_difficulty(client, difficulty);
-	}
+	client->difficulty_actual = difficulty;
+	client_send_difficulty(client, difficulty);
 }
 
 void client_adjust_difficulty(YAAMP_CLIENT *client)
@@ -61,6 +55,12 @@ void client_adjust_difficulty(YAAMP_CLIENT *client)
 	else if(client->difficulty_fixed)
 		return;
 
+	else if(client->shares_per_minute > 75)
+		client_change_difficulty(client, client->difficulty_actual*3.5);
+
+	else if(client->shares_per_minute > 50)
+		client_change_difficulty(client, client->difficulty_actual*3);
+
 	else if(client->shares_per_minute > 25)
 		client_change_difficulty(client, client->difficulty_actual*2);
 
@@ -75,7 +75,11 @@ int client_send_difficulty(YAAMP_CLIENT *client, double difficulty)
 {
 //	debuglog("%s diff %f\n", client->sock->ip, difficulty);
 	client->shares_per_minute = YAAMP_SHAREPERSEC;
-        client_call(client, "mining.set_difficulty", "[%.8f]", difficulty);
+
+	if(difficulty >= 1)
+		client_call(client, "mining.set_difficulty", "[%.0f]", difficulty);
+	else
+		client_call(client, "mining.set_difficulty", "[%0.8f]", difficulty);
 	return 0;
 }
 
@@ -94,4 +98,5 @@ void client_initialize_difficulty(YAAMP_CLIENT *client)
 		client->difficulty_actual = diff;
 		client->difficulty_fixed = true;
 	}
+
 }
